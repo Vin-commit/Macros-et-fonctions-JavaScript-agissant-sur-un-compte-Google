@@ -1,0 +1,500 @@
+﻿// - Une macro peut utiliser toutes les fonctions définies dans ce document.
+//
+// Outil complémentaire :
+//- code.gs/majDateIntervalle_de_dates() génère un calendrier adapté à l'intervalle de dates de l'exercice économique. Cela est réalisé en récupérant
+//les dates de début et de fin définies dans le nom du document de cette macro (format : "exercice économique du ../../.... au ../../....").
+
+
+/**
+ * Macro qui détecte la cellule, parmi une plage de cellules, qui contient la date du jour et ensuite la sélectionne, cela :
+ *  -> annule le risque involontaire d'une mauvaise manipulation lors de la modification du solde bancaire,
+ *  -> rend les projections des soldes bancaires invisibles (permet de calculer l'actuelle différence de solde bancaire en fin de période).
+ */
+function solde_viaLaFeuille() {
+ 
+  /**
+   * Fonction qui sélectionne la cellule d'abscisse 2 et d'ordonnée déterminée par solde()
+   *
+   */
+  function sélectionneLaCelluleDeLaDeuxièmeColonne_viaSolde(nom_du_feuillet, row) {
+        // En fin de logique d'objets pointés, la fonction activate() d'un objet de type Range est utilisée pour sélectionner ici la cellule
+        //correspondante.
+        // Sélection d'une cellule de la feuille désignée par 'nom_de_la_feuille'
+        SpreadsheetApp.getActive().getRange(nom_du_feuillet+"!B"+(row+5)/* +5: Décalage pour obtenir la plage des soldes */).activate();
+  };
+ 
+  /**
+   * Fonction qui change la couleur du texte de la cellule d'abscisse 2 et d'ordonnée déterminée par soldeBancaire()
+   *pour la rendre visible (true) ou non visible (false).
+   *
+   */
+  function modifieLaCouleurDuTexteDeLaCelluleDeLaDeuxièmeColonne_viaSolde(nom_du_feuillet, plage_des_soldes, row, visible) {
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var sheet = ss.getSheetByName(nom_du_feuillet);
+        var range = sheet.getRange(plage_des_soldes);
+        var cell = range.getCell(row, 1);
+            
+        if (visible) {
+          cell.setFontColor('black');
+          //cell.setFontWeight("bold"); // met en gras le solde du jour.
+        } else {
+          cell.setFontColor(cell.getBackground());
+        }         
+  };
+
+
+
+
+ 
+  // Affichage d'un message dans le coin inférieur droit.
+  SpreadsheetApp.getActiveSpreadsheet().toast("Un script faisant la mise à jour des dates de l'exercice économique (code.gs/majIntervalle_de_dates)"
+  +" est disponible via l'Éditeur.");
+                                                 
+  /// Enregistrement des données
+  //  --------------------------
+   // Des données spécifiques à cette feuille. Leur regroupement permet une maintenance plus facile.
+   const plage_des_dates = "A6:A36"; // coordonnées de la plage la plus longue possible.
+   const plage_des_soldes = "B6:B36"; // idem. Regroupement ici des données. Elle est utilisée par
+   //code.gs/modifieLaCouleurDuTexteDeLaCelluleDeLaDeuxièmeColonne_ViaSolde(nom_du_feuillet,  plage_des_soldes, row+1, visible)
+   const nom_du_feuillet = "Suivi du budget de l'exercice économique"; // nom du feuillet de calcul qui est l'objet de cette macro dont il y a
+                                                  //une dépendance en cascade. (à modifier si celui-ci change).
+   // Définition d'une variable 'ss' de type SpreadSheet contenant l'objet actuellement manipulé qui modélise le tableur.
+   const ss = SpreadsheetApp.getActiveSpreadsheet();
+   const sheet = ss.getSheetByName(nom_du_feuillet);
+   const range = sheet.getRange(plage_des_dates);
+   var cell; // Est défini par la boucle de parcours.
+ 
+  /// Gestion de la date actuelle
+  //  ---------------------------
+   // Création d'un objet contenant la date et l'heure en cours sur le serveur. Date(Date.now()) se base sur la date du système exécutant.
+   var date_et_heures_du_serveur = new Date(Date.now());
+   var phrase_pour_les_journaux = "\nLa date et l'heure renvoyées par le serveur :\n - "+date_et_heures_du_serveur.toString()/* ou +Date() */+'\n';
+   // On crée un objet de type Date nommé 'date_et_heures_du_serveur_retenues' avec le décalage horaire adéquate.
+   var date_et_heures_du_serveur_retenues = new Date (date_et_heures_du_serveur.getFullYear(), date_et_heures_du_serveur.getMonth(),
+        date_et_heures_du_serveur.getDate(), date_et_heures_du_serveur.getHours()+12 /* VALEUR A METTRE A JOUR QUI DEFINIT L'HEURE... */,
+        date_et_heures_du_serveur.getMinutes(), date_et_heures_du_serveur.getSeconds(), date_et_heures_du_serveur.getMilliseconds());
+   phrase_pour_les_journaux += "\nLa date et l'heure actuelles qui sont retenues suivant le fuseau horaire";
+   phrase_pour_les_journaux += " (GMT+01:00) Heure d'Europe centrale - Paris :";
+   // Reprise de la dénomination de Google Agenda :
+   // https://calendar.google.com/calendar/r/settings?tab=oc
+   phrase_pour_les_journaux += "\n - Le ";
+   // Si il n'y a qu'un chiffre pour le jour, alors on ajoute un zéro.
+   if (String(date_et_heures_du_serveur_retenues.getDate()).length < 2) {
+           phrase_pour_les_journaux += "0";
+   }
+   phrase_pour_les_journaux += String(date_et_heures_du_serveur_retenues.getDate())+"/";
+   // Si il n'y a qu'un chiffre pour le mois, alors on ajoute un zéro.
+   if (String(date_et_heures_du_serveur_retenues.getMonth()+1).length < 2) {
+         phrase_pour_les_journaux += "0";
+   }
+   // On complète la chaîne avec l'année.
+   phrase_pour_les_journaux += String(date_et_heures_du_serveur_retenues.getMonth()+1)+"/"+
+   String(date_et_heures_du_serveur_retenues.getYear())+" à ";
+   // Si il n'y a qu'un chiffre pour les heures, alors on lui ajoute un zéro.
+   (String(date_et_heures_du_serveur_retenues.getHours()).length < 2)? phrase_pour_les_journaux += "0":"";
+   phrase_pour_les_journaux += date_et_heures_du_serveur_retenues.getHours()+":";
+   // Si il n'y a qu'un chiffre pour les minutes, alors on lui ajoute un zéro.
+   (String(date_et_heures_du_serveur_retenues.getMinutes()).length < 2)? phrase_pour_les_journaux += "0":"";
+   phrase_pour_les_journaux += date_et_heures_du_serveur_retenues.getMinutes()+":";
+   // Si il n'y a qu'un chiffre pour les secondes, alors on lui ajoute un zéro.
+   (String(date_et_heures_du_serveur_retenues.getSeconds()).length < 2)? phrase_pour_les_journaux += "0":"";
+   phrase_pour_les_journaux += date_et_heures_du_serveur_retenues.getSeconds();
+   // On affiche le tout dans les journaux avec une recommandation.
+   phrase_pour_les_journaux += "\n\n(Le décalage horaire entre l'heure d'été et celle d'hiver est sans effet sur le fonctionnement"+
+   " de cette macro.)";
+   Logger.log(phrase_pour_les_journaux);
+ 
+  /// On parcourt les cellules de cette plage pour savoir si une cellule contient la date du jour et agir en conséquence
+  //  ------------------------------------------------------------------------------------------------------------------
+   for (var row = 0; row < 31; row++) { // boucle de recherche (1)
+         cell = range.getCell(row+1, column=1); // On parcourt toutes les cellules de cette plage donc en commence à 1 et non à zéro:
+         // Si les 2 derniers caractères de cette cellule correspondent à l'entier entre 1 et 31 de la date actuelle :
+         if (Number(cell.getValue().substring(cell.getValue().length-2, cell.getValue().length)) == date_et_heures_du_serveur_retenues.getDate()) {
+           sélectionneLaCelluleDeLaDeuxièmeColonne_viaSolde(nom_du_feuillet, row+1); // alors, on sélectionne la cellule sur la colonne suivante.
+           modifieLaCouleurDuTexteDeLaCelluleDeLaDeuxièmeColonne_viaSolde(nom_du_feuillet,  plage_des_soldes, row+1, visible=true); // et on rend son
+           //contenu visible.
+         } else {
+           modifieLaCouleurDuTexteDeLaCelluleDeLaDeuxièmeColonne_viaSolde(nom_du_feuillet, plage_des_soldes, row+1, visible=false); // sinon, on rend son
+           //contenu invisible.
+         }
+   } // fin de la boucle de recherche (1)
+};
+
+
+
+
+/**
+ * Fonction qui renvoie le texte "Différence avec le montant consacré à l'exercice (fini le ../../....)." à une cellule (ici K3).
+ *Ses paramètres, présents dans la cellule d'appel, permettent son déclenchement (donc la mise à jour du contenu de la cellule cible (ici K3)).
+ */
+function texteDeLaPlageH3N3_viaLaFeuille(){
+  const nom_du_fichier = SpreadsheetApp.getActive().getName();
+  return ("Différence avec le montant consacré à l'exercice actuel (fini le " + nom_du_fichier.substring(nom_du_fichier.length-10)+").");
+};
+
+
+//----------------------------------------------- Fonctions non utilisées (NU) -----------------------------------------------------------------------
+
+
+/**
+ * Fonction appelable dans le tableur qui convertit un nombre (en base 10) compris entre [0 et 52] passé en paramètre et retourne la lettre équivalente.
+ *  exemple : '=nombreVersCaracteres(17)'; dans une cellule du tableur.
+ *
+ * Cette fonction est non utilisée ici car on sélectionne la date du mois parmi un ensemble qui est défini pour cet usage exclusif :
+ *il s'agit d'une plage de cellules et non une ligne ou colonne.
+ */
+function nombreVersCaracteres_NU(numberToBeConverted) {
+  var characters = "";
+  if (numberToBeConverted > 26) { // numberToBeConverted sera converti si possible en nombre si ce n'est pas déjà le cas.
+        if (numberToBeConverted < 53) {
+          numberToBeConverted = numberToBeConverted - 26;
+          characters = "A" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ".charAt(numberToBeConverted - 1);
+        } else {
+          characters = "Type d'entrée incorrect ou nombre en dehors de l'intervalle [0; 52].";
+        }
+  } else {
+        if (numberToBeConverted > 0) {
+          characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".charAt(numberToBeConverted - 1);
+        } else {
+          characters = "Type d'entrée incorrect ou nombre en dehors de l'intervalle [0; 52].";
+        }
+  }
+  return characters;
+};
+
+
+/**
+ * Fonction "naïve" permettant de connaitre la ligne de la cellule sélectionnée en l'inscrivant dans le journal.
+ *Ne fonctionne qu'en étant appelé d'ici.
+ *
+ * Cette fonction décrit une manière de déterminer la position d'une cellule grace à l'ordre des lignes (ou colonne) du tableur.
+ * Cette manière a été remplacée par un ensemble de cellules soit une plage (range ici) contenant la date. Cette indépendance permet de :
+ *  - commencer l'ensemble des dates par n'importe laquelle,
+ *  - fixer les lignes/colonnes du tableur.
+ */
+function inscritDansLeJournalLeNuméroDeLaLigneDeLaCelluleCourante_NU() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet(); // Return an Sheet type object
+  // getCurrentCell() return the current hightlighted cell in the one of the active ranges.
+  var currentCell = sheet.getCurrentCell();
+  Logger.log(currentCell.getRow()); // return an integer showing the row position of the range (here one cell).
+};
+
+
+/**
+ *Associative array called myCalendarsID to identify the calendar:
+ * You can find the calendar ID in the 'Settings and sharing' page in the contextual menu then under 'Integrate calendar' title.
+ * This is used by :
+ * - listeDesEvtsFutursNonPériodiquesPourLAnnéeSuivante_viaUtilisateur()
+ * - listeDesEvtsPassésDeCetteAnnée_viaUtilisateur()
+**/
+var myCalendarsID = {
+                            "clef (pour retrouver facilement sa valeur)" : "valeur (ID de l'agenda)",
+                            "agendaPerso" : "irmre3lkqc4b9qto0l5bih7l2k@group.calendar.google.com",
+                            "agendaEnfants" : "cs2rsp8ma5h4lb0a4j0qk7ug2s@group.calendar.google.com",
+                            "agendaBoulot" : "7p7djo6rm2kebhu7031j1oc3lk@group.calendar.google.com",
+                            "agendaSansEvènements" : "gooogleapps33@gmail.com" // Pour vérifier qu'aucun évènement n'y est enregistré.
+                        }
+/**
+ * Cette fonction permet de lister tous les évènements futurs qui ne sont pas périodiques avec comme date de départ le 1er jancier de l'année suivante
+ *jusqu'au 31 décembre de la même année.
+ * Afin de l'automatiser et de voir son résultat (champs description) sur le mobile, son déclenchement est programmé.
+ * Celui-ci a lieu toutes les jours, pour s'assurer qu'aucun ajout ne sera pas fait après celle faite par ce programme (cela évite un retour
+ *à la ligne avant tout ajout pour débuter toute nouvelle phrase).
+ *
+ *Elle est notamment utile lorsque l'on supprime un agenda (aussi tous ses evts) tout en voulant recopier ses évènements à venir.
+ * S'il faut enregistrer un evt qui aura lieu dans plus de 2 ans, faire un rappel de l'evt l'année qui suit celle qui est en cours.
+ *  ex : x/y/z enregistré en x/y/n+1 si n est l'année en cours.
+**/
+function evtsFutursNonPériodiquesPourLAnnéeSuivante_viaUtilisateur()
+{
+/// Determine how many events this year has. To do that, we use the API function getEvents(startTime, endTime).
+  var now = new Date(); // c'est la date là où est exécuté le constructeur.
+  var startTime = new Date(now.getFullYear()+1 /* year */, 0 /* months */, 1 /* days */, 0 /* hours */, 0 /* minutes */,0 /* seconds */,
+        0 /* milliSeconds */);
+  var endTime = new Date(now.getFullYear()+1, 11 /* months (from 0 to 11)*/, 31 /* days */, 23 /* hours (from 0 to 23) */, 59 /* minutes */,
+        59 /* seconds */, 999 /* milliSeconds */);
+
+
+// The Calendar object is built with myCalendarsID["key"] (Méthode de classe CalendarApp).
+  var calendar = CalendarApp.getOwnedCalendarById(myCalendarsID["agendaPerso" /*"agendaEnfants"*/ /*"agendaBoulot"*/ /*"agendaSansEvènements */]);
+                                  
+// Sets the time zone of the calendar.
+  calendar.setTimeZone("Europe/Paris");
+ 
+// Gets all events that occur within a given time range.
+  var events = calendar.getEvents(startTime, endTime);
+   
+  var phrase_pour_les_journaux = "\nEvènements futur(s) non périodique(s) du ";
+  phrase_pour_les_journaux += startTime.getDate()+"/"+startTime.getMonth()+1+" au "+endTime.getDate()+"/";
+  phrase_pour_les_journaux += endTime.getMonth()+1+"/"+endTime.getFullYear()+" de '"+calendar.getName()+"'.\nIls sont classé(s) du plus ancien au plus lointain ";
+  phrase_pour_les_journaux += "(ordre chronologique) :\n";
+  for (var event = 0; event < events.length; event++)  {
+        if (!(events[event].isRecurringEvent()))  {
+          var eventStartDate = new Date(new Date(events[event].getStartTime()).getFullYear(), new Date(events[event].getStartTime()).getMonth()+1,
+            new Date(events[event].getStartTime()).getDate(), new Date(events[event].getStartTime()).getHours()+12);          
+          phrase_pour_les_journaux += "\n- "+events[event].getTitle()+" (le "+eventStartDate.getDate()+"/"+eventStartDate.getMonth()+")";
+          // Modification de sa description : ajout de la mention contenue dans searchTerm si celle-ci est absente.
+          var searchTerm = 'Evt à conserver';
+          if (events[event].getDescription().indexOf(searchTerm) == -1) { /* Est-ce qu'il y a déjà une mention ? */
+            if (events[event].getDescription().length != 0) /* Est-ce qu'il y a déjà une description ? */ {
+              events[event].setDescription(events[event].getDescription()+"\nEvt à conserver");
+            } else {
+              events[event].setDescription("Evt à conserver");
+            }
+          }
+        }
+  }
+Logger.log (phrase_pour_les_journaux);
+}
+
+
+/**
+ * Cette fonction permet de lister tous les évènements du début de l'année jusqu'à maintenant.
+ *
+ * Retourne pour un agenda donné (suivant son ID) son nombre d'évènement(s) s'étant déroulé(s) cette année et pour chacun d'eux :
+ *   - son titre,
+ *   - sa date de début,
+ *   - sa durée,
+ *   - son éventuelle périodicité,
+ *   - son éventuelle description,
+ *   - son éventuelle localisation,
+ *   - la liste éventuelle de ses invités.
+ *
+ * Ceci est fait par ordre antichronologique et ce retour est effectué par une sortie dans les journaux (Ctrl+Entrée).
+ *
+ */
+ function evtsPassésDeCetteAnnée_viaUtilisateur() {
+  // The Calendar object is built with myCalendarsID["key"].
+   var calendar = CalendarApp.getOwnedCalendarById(myCalendarsID["agendaPerso" /*"agendaEnfants"*/ /*"agendaBoulot"*/ /*"agendaSansEvènements */]);
+                                  // Méthode de classe 'CalendarApp'
+  /// Determine how many events happen from this year to now. To do that, we use the API function getEvents(startTime, now).
+   var now = new Date(); // c'est la date là où est exécuté le constructeur.
+   var startTime = new Date(now.getFullYear() /* year */, 0 /* months */, 1 /* days */, 0 /* hours */, 0 /* minutes */, 0 /* seconds */,
+        0 /* milliSeconds */);
+   var endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() , now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+   
+   // Sets the time zone of the calendar.
+   calendar.setTimeZone("Europe/Paris");
+   
+   var events = calendar.getEvents(startTime, endTime);
+   
+   var phrase_pour_les_journaux = "\nEvènement(s) passé(s) du ";
+   phrase_pour_les_journaux += startTime.getDate()+"/"+startTime.getMonth()+1+" au "+endTime.getDate()+"/";
+   phrase_pour_les_journaux +=endTime.getMonth()+1+"/"+endTime.getFullYear()+" de '"+calendar.getName()+"'.\nIls sont classé(s) du plus récent";
+   phrase_pour_les_journaux += " de cette année par rapport à aujourd'hui jusqu'au début de l'année (ordre antichronologique) : ";
+   phrase_pour_les_journaux += "\n Number of events: " + events.length + '\n';
+   // Determine for each events somes characteristics.
+   for (var event = events.length; event > 0; event--) { // De l'évènement le plus récent events[events.length-1] au plus ancien events[0].
+         phrase_pour_les_journaux += '\n  - Event name: ' + events[event-1].getTitle();
+         var eventStartDate = new Date(new Date(events[event-1].getStartTime()).getFullYear(), new Date(events[event-1].getStartTime()).getMonth(),
+          new Date(events[event-1].getStartTime()).getDate(), new Date(events[event-1].getStartTime()).getHours()+12,
+          new Date(events[event-1].getStartTime()).getMinutes());
+         var eventEndDate = new Date(new Date(events[event-1].getEndTime()).getFullYear(), new Date(events[event-1].getEndTime()).getMonth(),
+          new Date(events[event-1].getEndTime()).getDate(), new Date(events[event-1].getEndTime()).getHours()+12,
+          new Date(events[event-1].getEndTime()).getMinutes());
+        function miseEnFormeDeLaDate (date_en_cours) {          
+           // Si il n'y a qu'un chiffre pour le jour, alors on lui ajoute un zéro.
+           (String(date_en_cours.getDate()).length < 2)?  phrase_pour_les_journaux += "0":"";
+           phrase_pour_les_journaux += date_en_cours.getDate()+'/';
+           // Si il n'y a qu'un chiffre pour le mois, alors on lui ajoute un zéro.
+           (String(date_en_cours.getMonth()).length < 2)? phrase_pour_les_journaux += "0":"";
+           phrase_pour_les_journaux += (date_en_cours.getMonth()+1) +'/'+date_en_cours.getFullYear()+' à ';
+           // Si il n'y a qu'un chiffre pour les heures, alors on lui ajoute un zéro.
+           (String(date_en_cours.getHours()).length < 2)? phrase_pour_les_journaux += "0":"";
+           phrase_pour_les_journaux += date_en_cours.getHours()+':';
+           // Si il n'y a qu'un chiffre pour les minutes, alors on lui ajoute un zéro.
+           (String(date_en_cours.getMinutes()).length < 2)? phrase_pour_les_journaux += "0":"";
+           phrase_pour_les_journaux += date_en_cours.getMinutes();
+         }
+         // Calcul et affichage du début de l'évènement.
+         phrase_pour_les_journaux += "\n  - Event start date: ";
+         miseEnFormeDeLaDate(eventStartDate);
+         // Calcul et affichage de la fin de l'évènement.
+         phrase_pour_les_journaux += "\n  - Event end date: ";
+         miseEnFormeDeLaDate(eventEndDate);
+         // Calcul et affichage de la durée de l'évènement.
+         phrase_pour_les_journaux += "\n  - Event duration: ";
+         var EvtDuration = new Date(events[event-1].getEndTime()-events[event-1].getStartTime())/(3600*1000); // La durée de l'evt. obtenue est en heure.
+         // 1 heure = 60 minutes = 3600 (60*60) secondes = 3600 000 millisecondes.
+         if (EvtDuration < 24) {
+           // Si la durée de l'evt est < à 24 heures, on l'affichera.
+           phrase_pour_les_journaux += Math.round(EvtDuration) + " heure(s) et "+Math.round((EvtDuration-Math.round(EvtDuration))*60)+" minute(s).\n";
+         } else {
+           // Sinon, on la convertit en jour et on l'affichera.
+           phrase_pour_les_journaux += Math.round(EvtDuration / 24 )+ " jour(s) et "+Math.round(EvtDuration%24)+" heure(s).\n";
+         }
+         // Si l'evt est périodique, alors on le signale, sinon on le signale aussi.
+         if (events[event-1].isRecurringEvent()) {
+           phrase_pour_les_journaux += "  - This is a recurring event.\n";
+         } else {
+           phrase_pour_les_journaux += "  - This is not a recurring event.\n";
+         }
+         // Si il y a une description à l'évènement, alors on l'affiche (après une éventuelle modificationn).
+         if (events[event-1].getDescription().length != 0) {
+           // Modification de sa description : retrait de la mention contenue dans searchTerm si elle est présente.
+           var searchTerm = 'Evt à conserver'; // Chaîne de 15 caractères.
+           var indexOfTerm = events[event-1].getDescription().indexOf(searchTerm)
+           if (indexOfTerm != -1) {
+             events[event-1].setDescription(events[event-1].getDescription().substring(0, // La nouvelle description est une partie de l'ancienne.
+              indexOfTerm)+events[event-1].getDescription().substring(indexOfTerm+15, events[event-1].getDescription().length));
+           }
+           phrase_pour_les_journaux += "  - Description: " + events[event-1].getDescription() + '\n';
+         }
+         // Si il y a un lieu pour l'évènement, alors on l'affichera.
+         if (events[event-1].getLocation().length != 0) {
+           phrase_pour_les_journaux += "  - Location: " + events[event-1].getLocation() + '\n';
+         }
+         // Si il y a un/des invité/s à l'évènement, alors on l'/les affichera.
+         if (events[event-1].getGuestList().length != 0) {
+           phrase_pour_les_journaux += "  - Guest(s): ";
+           for (var i = 0; i < events[event-1].getGuestList().length; i++) {
+             phrase_pour_les_journaux += events[event-1].getGuestList()[i]+'\n';
+           }
+         }
+   }
+   // Affichage de la chaîne 'phrase_pour_les_journaux'.
+   Logger.log (phrase_pour_les_journaux);
+ };
+
+
+/**
+ * Fonction appelée à la demande de l'utilisateur (la sélectionner dans la liste puis triangle droit) pour recréer le calendrier défini par
+ *l'intervalle des dates de l'exercice économique, récupérées dans le nom de ce document.
+ *
+ * Vu que le développeur est aussi l'utilisateur de cette fonction, il n'y a pas de contrôle des entrées (ici le nom du document).
+ * Cette fonction n'efface que les dates (colonne A), la perte des autres données ne peut lui être imputées.
+ */
+function majIntervalleDeDates_viaUtilisateur() {
+  // Enregistrement des données spécifiques de la fonction.
+  var date_de_début, date_de_fin;
+  const plage_des_dates = "A6:A36"; // soit une plage de 31 cellules, durée maximum de l'exercice économique (notamment pour un affichage optimisé).
+  const nom_du_feuillet = "Suivi du budget de l'exercice économique";
+ 
+  var phrase_pour_les_journaux = "\n- Variable 'plage_des_dates' : " + plage_des_dates + "\n- Variable 'nom_du_feuillet' : " + nom_du_feuillet;
+ 
+  // Enregistrement des constantes relatives aux données spécifiques de la fonction.
+  const nom_du_fichier = SpreadsheetApp.getActive().getName();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(nom_du_feuillet);
+  var range = sheet.getRange(plage_des_dates);
+  phrase_pour_les_journaux += "\n- Variable 'nom_du_fichier' : " + nom_du_fichier + "\n- Variable 'ss' : " + ss + "\n- Variable 'sheet' : " + sheet +
+  "\n- Variable 'range' : " + range;
+   
+  // Récupération via le nom du fichier Google Sheets des dates encadrant l'intervalle et mise sous la forme 'aaaa-mm-jj'
+  //pour pouvoir générer un objet de type Date :
+ date_de_début = "'"+nom_du_fichier.substring(nom_du_fichier.length-18, nom_du_fichier.length-14)+'-'+ // aaaa-
+        nom_du_fichier.substring(nom_du_fichier.length-21, nom_du_fichier.length-19)+'-'+ // mm-
+        nom_du_fichier.substring(nom_du_fichier.length-24, nom_du_fichier.length-22)+"'"; // jj
+  date_de_fin = "'"+nom_du_fichier.substring(nom_du_fichier.length-4, nom_du_fichier.length)+'-'+ // aaaa-
+        nom_du_fichier.substring(nom_du_fichier.length-7, nom_du_fichier.length-5)+'-'+ // mm-
+        nom_du_fichier.substring(nom_du_fichier.length-10, nom_du_fichier.length-8)+"'"; // jj
+  phrase_pour_les_journaux += "\n- Variable 'date_de_début' : " + date_de_début + "\n- Variable 'date_de_fin' : " + date_de_fin;
+ 
+  // Calcul du nombre de jours de l'exercice économique (la soustraction entre deux date est en millisecondes) :
+  var durée_en_jours = (new Date(eval(date_de_fin))-new Date(eval(date_de_début)))/(24*3600*1000)+1;
+  phrase_pour_les_journaux += "\n- Variable 'durée_en_jours' : " + durée_en_jours+"\n";
+   
+  /// On parcourt la colonne Date pour réaliser toutes les opérations de mise à jour
+  //  ------------------------------------------------------------------------------
+   // Construction des objets utilisés :
+   var date_de_depart = new Date(eval(date_de_début));
+   var cell = sheet.getRange(plage_des_dates);
+   var date_de_parcours;
+            
+   // On efface la couleur de remplissage, les valeurs, les bordures et les remarques de la plage de cellules 'dates' existante.
+         // -> Celle-ci  est la plus large possible (A6:A36) pour prendre en compte tous les cas.
+   range.clear();
+   range.clearNote();
+   // On mettra au centre horizontalement de la cellule leur futur contenu.
+   cell.setHorizontalAlignment("center");
+ 
+   for (var row = 1; row <= durée_en_jours; row++) { // Le nombre d'itération est déterminé par le nombre de jours de l'intervalle.
+         cell = range.getCell(row, column=1);
+         date_de_parcours = new Date (date_de_depart.getFullYear(), date_de_depart.getMonth(), date_de_depart.getDate()+row, 0 /*Hours*/, 0 /*Minutes*/,
+          0 /*Seconds*/, 0 /*MilliSeconds*/); // La définition de l'objet 'date_de_parcours' progresse de row (boucle for) jour(s) duréeEnJours fois
+         //jusqu'à l'atteinte de la date de fin d'exercice.
+         // Insère le jour de l'objet Date date_de_parcours (partie à gauche du +).
+          
+         function trouveLeJourDeLaDate_viaMajIntervalleDeDates(date_de_parcours) {
+         // Sans son usage, on se priverait de l'affichage des jours de la semaine, en se référant à la couleur de fond
+         //différente s'il s'agit d'un jour de semaine (gris) ou de week-end (orange), pour connaître le jour d'une date.
+           switch(date_de_parcours.getDay()) { // renvoie un entier entre 0 et 6 pour chaque jour de la semaine.
+             case 0:
+               return "Di.";
+             case 1:
+               return "Lu.";
+             case 2:
+               return "Ma.";
+             case 3:
+               return "Me.";
+             case 4:
+               return "Je.";
+             case 5:
+              return "Ve.";
+             case 6:
+               return "Sa.";
+           }
+         };
+         day = trouveLeJourDeLaDate_viaMajIntervalleDeDates(date_de_parcours)
+         cell.setValue(day+" "+date_de_parcours.getDate()); // La partie à droite du + est l'entier entre 1 et 31 correspondant à la date.
+         // L'emploi d'un objet de type Date() permet de s'assurer que la date existe (29 février, ...) pour créer le calendrier et l'on dispose d'un
+         //ensemble de fonctions utilisables pour cet objet facilitant la réalisation de cette fonction.
+         // On insère une remarque spécifique à chaque cellule à propos de la date qu'elle contient : son rapport à l'ensemble des dates de l'exercice.
+         cell.setNote("Jour n°"+(row)+" sur "+durée_en_jours+" ("+((row/durée_en_jours)*100).toFixed(2)+"%) de l'exercice économique.");
+         // On définit la couleur de son fond suivant le jour à laquelle elle correspond.
+         if (date_de_parcours.getDay() == 0 || date_de_parcours.getDay() == 6) {
+           cell.setBackgroundRGB(255, 153, 0); // Couleur de remplissage orange pour le jour samedi ou le jour dimanche.
+         } else {
+           cell.setBackgroundRGB(217, 217, 217); // Couleur de remplissage gris clair 1 pour les autres jours de la semaine.
+         }
+         // On met toutes les bordures de la cellule.
+         cell.setBorder(top=true, left=true, bottom=true, right=true, vertical=true, horizontal=true);
+   } // Fin de la boucle for parcourant les cellules contenant les dates de l'exercice économique.
+   // On efface ligne à ligne les contours des cellules qui suivent celles de l'exercice économique.
+   // -> Cela permettra de redessiner un cadre adapté à la taille des données actuelles (lignes ci-dessous).
+   for (var usage_périmé = durée_en_jours+6; usage_périmé <= 36; usage_périmé++) {
+         var plage_ap_exo = "A"+Number(usage_périmé)+":C"+Number(usage_périmé);
+         range = sheet.getRange(plage_ap_exo);
+         // Il est inévitable de rajouter des bordures aux cellules supplémentaires après un exercice économique plus court.
+         range.clear({formatOnly: true});
+         phrase_pour_les_journaux +="\n- On efface les bordures et la couleur de fond du segment : "+plage_ap_exo+".";
+   }
+   Logger.log(phrase_pour_les_journaux);
+  /// Mise à jour de la cellule (ici E3) contenant le solde projeté à la fin de l'exercice et redimensionnement du cadre
+  //  ------------------------------------------------------------------------------------------------------------------
+  //-> Son montant sert de repère pour la situation actuelle en permettant de calculer la différence avec le montant consacré à l'exercice actuel.
+  //-> On profite de la duréeEnJours de l'exercice pour unifier les données des 3 premières colonnes de l'exercice par un encadrement gras.
+   cell = sheet.getRange("E3");
+   cell.clearNote();
+   switch (durée_en_jours) {
+         case 31:
+           cell.setFormula("=B36"); // Durée de 31 jours.
+            // On créé un cadre à la taille actualisée (le pécédent a été effacé).
+           range = sheet.getRange("A3:C36");
+           range.setBorder(top=true, left=true, bottom=true, right=true, vertical=null, horizontal=null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+           break;
+         case 30:
+           cell.setFormula("=B35"); // Durée de 30 jours.
+           // On créé un cadre à la taille actualisée (le pécédent a été effacé).
+           range = sheet.getRange("A3:C35");
+           range.setBorder(top=true, left=true, bottom=true, right=true, vertical=null, horizontal=null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+           break;
+         case 29:
+           cell.setFormula("=B34"); // Durée de 29 jours.
+           // On créé un cadre à la taille actualisée (le pécédent a été effacé).
+           range = sheet.getRange("A3:C34");
+           range.setBorder(top=true, left=true, bottom=true, right=true, vertical=null, horizontal=null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+           break;
+         case 28:
+           cell.setFormula("=B33"); // Durée de 28 jours.
+           // On créé un cadre à la taille actualisée (le pécédent a été effacé).
+           range = sheet.getRange("A3:C33");
+           range.setBorder(top=true, left=true, bottom=true, right=true, vertical=null, horizontal=null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+           break;
+         default:
+           cell.setFormula("=LEFTB(\"Durée non gérée\";15)"); /* LEFTB(<chaîne à afficher>; <nombre de caractère de la chaîne à afficher>) */
+           cell.setNote("La durée de cet exercice économique ("+duréeEnJours+" jours) n'est pas gérée par ce document Google Sheets.");
+   // Si il s'agit d'une durée supérieure à 31 jours, donc supérieur au nombre de cellules de "plage_des_date" alors il y aura le déclenchement
+   //d'une exception qui arrêtera ce script donc E3 aura la valeur définie lors de ou des exercice(s) précédent(s).
+   }
+};
